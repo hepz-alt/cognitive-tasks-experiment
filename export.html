@@ -113,6 +113,7 @@
         import { getFirestore, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
         let db = null;
+        let app = null;
 
         window.connectFirebase = async function() {
             const apiKey = document.getElementById('apiKey').value;
@@ -133,7 +134,13 @@
                     storageBucket: `${projectId}.firebasestorage.app`
                 };
 
-                const app = initializeApp(firebaseConfig);
+                // Use a unique app name to avoid duplicate app errors
+                try {
+                    app = initializeApp(firebaseConfig, 'export-tool-' + Date.now());
+                } catch (e) {
+                    // If app already exists, try to get it
+                    app = initializeApp(firebaseConfig);
+                }
                 db = getFirestore(app);
 
                 // Test connection by trying to read a collection
@@ -156,12 +163,18 @@
             const flattened = {};
             for (const key in obj) {
                 const value = obj[key];
-                const newKey = prefix ? `${prefix}.${key}` : key;
+                const newKey = prefix ? `${prefix}_${key}` : key;
                 
                 if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
                     Object.assign(flattened, flattenObject(value, newKey));
                 } else if (Array.isArray(value)) {
-                    flattened[newKey] = JSON.stringify(value);
+                    // For arrays, don't stringify - skip or handle differently
+                    // Skip large arrays to keep CSV clean
+                    if (value.length > 10) {
+                        flattened[newKey] = `[${value.length} items]`;
+                    } else {
+                        flattened[newKey] = JSON.stringify(value);
+                    }
                 } else {
                     flattened[newKey] = value;
                 }
@@ -174,10 +187,23 @@
             
             const flattenedData = data.map(flattenObject);
             const allKeys = [...new Set(flattenedData.flatMap(obj => Object.keys(obj)))];
-            const header = allKeys.join(',');
+            
+            // Sort keys to make columns more organized
+            // Put important fields first
+            const keyPriority = ['id', 'participant_id', 'session', 'timestamp', 'total_trials', 'final_bank'];
+            const sortedKeys = allKeys.sort((a, b) => {
+                const aPriority = keyPriority.indexOf(a.split('_')[0]);
+                const bPriority = keyPriority.indexOf(b.split('_')[0]);
+                if (aPriority !== -1 && bPriority !== -1) return aPriority - bPriority;
+                if (aPriority !== -1) return -1;
+                if (bPriority !== -1) return 1;
+                return a.localeCompare(b);
+            });
+            
+            const header = sortedKeys.join(',');
             
             const rows = flattenedData.map(obj => {
-                return allKeys.map(key => {
+                return sortedKeys.map(key => {
                     const value = obj[key] !== undefined ? obj[key] : '';
                     const stringValue = String(value);
                     if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
