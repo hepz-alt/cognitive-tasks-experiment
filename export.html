@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Export Firestore Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 30px;
+            border-radius: 10px;
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 5px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        input {
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Export Firestore Data to CSV</h1>
+        
+        <div class="section">
+            <h2>Firebase Configuration</h2>
+            <label>API Key:</label>
+            <input type="text" id="apiKey" placeholder="Enter your Firebase API Key">
+            <label>Project ID:</label>
+            <input type="text" id="projectId" placeholder="Enter your Project ID (cognitive-tasks-study1)">
+            <button onclick="connectFirebase()">Connect to Firebase</button>
+            <div id="connectionStatus" class="status"></div>
+        </div>
+
+        <div class="section">
+            <h2>Export Data</h2>
+            <button onclick="exportNBackData()" id="nbackBtn" disabled>Export N-Back Data</button>
+            <button onclick="exportIGTData()" id="igtBtn" disabled>Export IGT Data</button>
+            <button onclick="exportAllData()" id="allBtn" disabled>Export All Data</button>
+            <div id="exportStatus" class="status"></div>
+        </div>
+
+        <div class="section">
+            <h2>Instructions</h2>
+            <ol>
+                <li>Enter your Firebase API Key (from Firebase Console → Project Settings → General)</li>
+                <li>Enter your Project ID: <strong>cognitive-tasks-study1</strong></li>
+                <li>Click "Connect to Firebase"</li>
+                <li>Click the export buttons to download CSV files</li>
+                <li>Open CSV files in Excel for analysis</li>
+            </ol>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        let db = null;
+
+        window.connectFirebase = async function() {
+            const apiKey = document.getElementById('apiKey').value;
+            const projectId = document.getElementById('projectId').value;
+            const statusDiv = document.getElementById('connectionStatus');
+
+            if (!apiKey || !projectId) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Please enter both API Key and Project ID';
+                return;
+            }
+
+            try {
+                const firebaseConfig = {
+                    apiKey: apiKey,
+                    projectId: projectId,
+                    authDomain: `${projectId}.firebaseapp.com`,
+                    storageBucket: `${projectId}.firebasestorage.app`
+                };
+
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+
+                // Test connection by trying to read a collection
+                const nbackSnapshot = await getDocs(collection(db, 'nback_data'));
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = `✓ Connected successfully! Found ${nbackSnapshot.size} N-Back records`;
+                
+                document.getElementById('nbackBtn').disabled = false;
+                document.getElementById('igtBtn').disabled = false;
+                document.getElementById('allBtn').disabled = false;
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `✗ Connection failed: ${error.message}`;
+                console.error('Connection error:', error);
+            }
+        };
+
+        function flattenObject(obj, prefix = '') {
+            const flattened = {};
+            for (const key in obj) {
+                const value = obj[key];
+                const newKey = prefix ? `${prefix}.${key}` : key;
+                
+                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    Object.assign(flattened, flattenObject(value, newKey));
+                } else if (Array.isArray(value)) {
+                    flattened[newKey] = JSON.stringify(value);
+                } else {
+                    flattened[newKey] = value;
+                }
+            }
+            return flattened;
+        }
+
+        function arrayToCSV(data) {
+            if (data.length === 0) return '';
+            
+            const flattenedData = data.map(flattenObject);
+            const allKeys = [...new Set(flattenedData.flatMap(obj => Object.keys(obj)))];
+            const header = allKeys.join(',');
+            
+            const rows = flattenedData.map(obj => {
+                return allKeys.map(key => {
+                    const value = obj[key] !== undefined ? obj[key] : '';
+                    const stringValue = String(value);
+                    if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+                        return `"${stringValue.replace(/"/g, '""')}"`;
+                    }
+                    return stringValue;
+                }).join(',');
+            });
+            
+            return [header, ...rows].join('\n');
+        }
+
+        function downloadCSV(csv, filename) {
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        window.exportNBackData = async function() {
+            const statusDiv = document.getElementById('exportStatus');
+            statusDiv.className = 'status info';
+            statusDiv.textContent = 'Exporting N-Back data...';
+
+            try {
+                const snapshot = await getDocs(collection(db, 'nback_data'));
+                const data = [];
+                snapshot.forEach(doc => {
+                    data.push({ id: doc.id, ...doc.data() });
+                });
+
+                const csv = arrayToCSV(data);
+                downloadCSV(csv, 'nback_data.csv');
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = `✓ Exported ${data.length} N-Back records to nback_data.csv`;
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `✗ Export failed: ${error.message}`;
+            }
+        };
+
+        window.exportIGTData = async function() {
+            const statusDiv = document.getElementById('exportStatus');
+            statusDiv.className = 'status info';
+            statusDiv.textContent = 'Exporting IGT data...';
+
+            try {
+                const snapshot = await getDocs(collection(db, 'igt_data'));
+                const data = [];
+                snapshot.forEach(doc => {
+                    data.push({ id: doc.id, ...doc.data() });
+                });
+
+                const csv = arrayToCSV(data);
+                downloadCSV(csv, 'igt_data.csv');
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = `✓ Exported ${data.length} IGT records to igt_data.csv`;
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `✗ Export failed: ${error.message}`;
+            }
+        };
+
+        window.exportAllData = async function() {
+            const statusDiv = document.getElementById('exportStatus');
+            statusDiv.className = 'status info';
+            statusDiv.textContent = 'Exporting all data...';
+
+            try {
+                await window.exportNBackData();
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                await window.exportIGTData();
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = '✓ All data exported successfully!';
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `✗ Export failed: ${error.message}`;
+            }
+        };
+    </script>
+</body>
+</html>
