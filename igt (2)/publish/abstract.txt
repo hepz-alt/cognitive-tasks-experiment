@@ -1,0 +1,1 @@
+The original Iowa Gambling Task studies decision making using a cards. The participant needs to choose one out of four card decks (named A,B,C, and D). The participant can win or loose money with each card. This is a task about decision making and risk taking.

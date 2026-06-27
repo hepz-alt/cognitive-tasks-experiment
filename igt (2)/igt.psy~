@@ -1,0 +1,89 @@
+options
+ bitmapdir stimuli
+ set &bank 2000
+ mouse on
+ 
+bitmaps
+ instructions
+ win100
+ win50
+ fee250
+ fee50
+ button_a
+ button_b
+ button_c
+ button_d
+ button_a_dark
+ button_b_dark
+ button_c_dark
+ button_d_dark
+ choose_bar
+ collectmoney
+
+fonts
+ arial 18
+
+task igt
+ text align left
+ set $bankbefore &bank ## save the current amount in your bank
+ show bitmap button_a -300 125                   # 1
+ show bitmap button_b -100 125                   # 2
+ show bitmap button_c  100 125                   # 3
+ show bitmap button_d  300 125                   # 4
+ show bitmap choose_bar 0 250                    # 5
+ set %currentInBank "Your money: " &bank 
+ show text %currentInBank -390 -250  white       # 6
+ readmouse l 1 99999 range 1 4                   # need to click one of the four buttons
+ set $buttonPressed UNDER_MOUSE
+ scale $buttonPressed 110
+ delay 50
+ scale $buttonPressed 100
+ delay 50
+ scale $buttonPressed 110
+ delay 50
+ scale $buttonPressed 100
+ show bitmap button_a_dark -300 125              # after clicking make them all darker (greyed-out)
+ show bitmap button_b_dark -100 125
+ show bitmap button_c_dark  100 125
+ show bitmap button_d_dark  300 125
+ set $decisiontime RT                            # tmp srote RT
+ clear 5
+ #################################################
+ ## did people press left buttons (1,2) or right buttons (3,4)
+ ## for A|B you always get 100 and for C|D always 50
+ if UNDER_MOUSE = 1 or UNDER_MOUSE = 2
+   set $ab 1 ## ab=1 means that people pressed a or b
+   set &bank increase 100
+   show bitmap win100 -175 -100
+   set $win 100
+ fi
+ if UNDER_MOUSE == 3 or UNDER_MOUSE == 4
+   set $ab 0
+   set &bank increase 50
+   show bitmap win50 -175 -100
+   set $win 50
+ fi
+ ######################################################################
+ ## did people get fee (1) or not (0) and press a or b?
+ set $fee_or_not &&fees remove random ## take random from the list of 1s and 0s
+ if $fee_or_not = 1 and $ab = 1  # the AB set which is disadvantagous, because higher $250 fee
+   set &bank decrease 250
+   show bitmap fee250 175 -100
+   set $fee 250
+ fi
+ if $fee_or_not = 1 and $ab = 0 # the CD set which is good, because lower $50 fee
+   set &bank decrease 50
+   show bitmap fee50  175 -100
+   set $fee 50   
+ fi
+ show bitmap collectmoney 0 250
+ set $lastShown SHOW_COUNTER
+ readmouse l 9 999999 range $lastShown $lastShown
+ clear -1
+ save $decisiontime $buttonPressed $ab $fee_or_not $bankbefore &bank $win $fee
+
+block test
+  set &&feeset 1 0 ## a fee can be given (1) or not (0), so there are chances
+  set &&fees &&feeset times 50 ## we need a set of 1s (50x) and 0s (50x), no need to shuffle
+  message instructions
+  task igt 100
